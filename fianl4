@@ -1,0 +1,238 @@
+Require Import Arith.
+Lemma prob1 : forall A B C D : Prop, (A -> B) -> (A -> C) -> (B -> C -> D) -> A -> D.
+Proof.
+intros a b c d H1 H2 H3 H4.
+apply H3.
+apply H1.
+exact H4.
+apply H2.
+exact H4.
+Qed.
+
+Lemma prob2 : forall P Q : Prop, (P \/ ~ P) -> (((P -> Q) -> P) -> P).
+Proof.
+unfold not.
+intros P Q H1 H2.
+destruct H1.
+exact H.
+apply H2.
+intros H3.
+exfalso.
+apply H.
+exact H3.
+Qed.
+
+Lemma prob3 : (forall P : Prop, ~ P \/ P) -> (forall P Q : Prop, ~ (P /\ Q) -> ~ P \/ ~ Q).
+Proof.
+unfold not.
+intros H P Q H1.
+destruct (H P).
+left.
+exact H0.
+right.
+intro q.
+apply H1.
+split.
+exact H0.
+exact q.
+Qed.
+
+Inductive acc : nat -> Prop := acc_k : forall k, (forall y, y < k -> acc y) -> acc k.
+
+Theorem lt_wf : forall n, acc n.
+Proof.
+(induction n).
+ (apply acc_k).
+ (intros y H).
+ (inversion H).
+
+ (induction IHn).
+ clear H0.
+ (apply acc_k).
+ (intros y Hlt).
+ (apply acc_k).
+ (intros y0 Hlt0).
+ (apply acc_k).
+ (intros y1 Hlt1).
+ (apply H).
+ Require Import Arith.
+ (apply le_trans with (m := y0)).
+  exact Hlt1.
+
+  (apply le_trans with (m := y)).
+   (apply lt_le_weak).
+   exact Hlt0.
+
+   (apply le_S_n).
+   exact Hlt.
+
+Qed.
+
+Definition acc_then_Px :
+  forall {P : nat -> Prop} (n : nat),
+    (forall x, (forall y, y < x -> P y) -> P x)
+    -> acc n
+    -> P n.
+Proof.
+  refine (fun P n f acc => acc_ind _ _ _ _).
+  - intros k _ f'.
+    apply f.
+    exact f'.
+  - exact acc.
+Defined.
+
+Definition strong_nat_ind :
+  forall P : nat -> Prop,
+    (forall x, (forall y, y < x -> P y) -> P x)
+    -> forall x, P x.
+Proof.
+  refine (fun P f x => _).
+  refine (acc_then_Px _ f _).
+  apply lt_wf.
+Defined.
+
+Inductive div4 : nat -> Prop :=
+| div4_0 : div4 0
+| div4_S : forall n, rem2 n -> div4 (S (S n))
+with rem2 : nat -> Prop :=
+| rem2_S : forall n, div4 n -> rem2 (S (S n)).
+
+Lemma prob4 : forall n, div4 n -> ~ rem2 n.
+Proof.
+ intros n Hdiv.
+Abort.
+
+Definition relation (X Y : Type) := X -> Y -> Prop.
+Definition reflexive {X: Type} (R: relation X X) := forall a : X, R a a.
+Definition transitive {X: Type} (R: relation X X) := forall a b c : X,
+  (R a b) -> (R b c) -> (R a c).
+Definition symmetric {X: Type} (R: relation X X) := forall a b : X, (R a b) -> (R b a).
+Definition antisymmetric {X: Type} (R: relation X X) := forall a b : X,
+  (R a b) -> (R b a) -> a = b.
+Definition equivalence {X:Type} (R: relation X X) := (reflexive R) /\ (symmetric R)
+  /\ (transitive R).
+Definition partial_function {X Y: Type} (R: relation X Y) := forall x : X,
+  forall y1 y2 : Y, R x y1 -> R x y2 -> y1 = y2.
+
+Lemma prob5 : ~partial_function le.
+Proof.
+  unfold partial_function.
+  intro H.
+assert (1 = 0).
+apply (H 0 1 0).
+apply le_S.
+apply le_n.
+apply le_n.
+inversion H0.
+Qed.
+
+From Coq Require Import Bool.Bool.
+From Coq Require Import Classes.RelationClasses.
+
+Variable (choice : forall {A P} (prf : exists a : A, P a), A).
+Hypothesis (choice_ok : forall {A P} (prf : exists a : A, P a), P (choice prf)).
+
+Record Func (dom cod : Type) : Type :=
+  mkFunc {
+      rel : dom -> cod -> Prop
+    ; total : forall x : dom, exists y : cod, rel x y
+    ; functional : forall x : dom, forall y z : cod, rel x y -> rel x z -> y = z
+    }.
+
+Definition app : forall {dom cod}, Func dom cod -> dom -> cod.
+Proof.
+  intros dom cod f x.
+  exact (choice (f.(total dom cod) x)).
+Defined.
+
+Lemma app_iff_rel : forall {dom cod} (f : Func dom cod) (x : dom) (y : cod),
+    app f x = y <-> (f.(rel dom cod) x y).
+Proof.
+  intros dom cod f x y.
+  set (s := total dom cod f x).
+  unfold app.
+  fold s.
+  split.
+  - intros app.
+    rewrite <- app.
+    exact (choice_ok s).
+  - intros rel.
+    apply (f.(functional dom cod)) with (x := x).
+    + exact (choice_ok s).
+    + exact rel.
+Qed.
+
+Definition by_formula : forall {dom cod : Type}, (dom -> cod) -> Func dom cod.
+Proof.
+  intros dom cod f.
+  refine (mkFunc dom cod (fun x y => f x = y) _ _).
+  - intros x.
+    exists (f x).
+    reflexivity.
+  - intros x y z eq1 eq2.
+    rewrite <- eq1.
+    rewrite <- eq2.
+    reflexivity.
+Defined.
+
+Lemma by_formula_ok : forall {dom cod : Type} (formula : dom -> cod) (x : dom),
+    app (by_formula formula) x = formula x.
+Proof.
+  intros dom cod formula x.
+  unfold by_formula.
+  unfold app.
+  simpl.
+  set (ok := choice_ok
+               (ex_intro (fun y : cod => formula x = y) (formula x) eq_refl)).
+  symmetry.
+  exact ok.
+Qed.
+
+Definition surjective {dom cod} (f : Func dom cod) := forall y : cod,
+  exists x : dom, app f x = y.
+Definition injective {dom cod} (f : Func dom cod) := forall x xp : dom,
+  app f x = app f xp -> x = xp.
+
+Definition f := by_formula (fun x : nat => 5 * x + 1).
+
+Lemma prob6 : injective f /\ ~surjective f.
+Proof.
+unfold f.
+Abort.
+
+Open Scope Z_scope.
+Require Import ZArith.
+Require Import Znumtheory.
+
+Lemma prob7 : forall a b c : Z, (a | c) -> (b | c) -> Zis_gcd a b 1 -> (a*b | c).
+Proof.
+intros a b c H1 H2 H3.
+destruct H3 as [H4 H5].
+unfold Z.divide.
+destruct H1.
+destruct H2.
+destruct H4.
+destruct H5.
+rewrite H0.
+Abort.
+
+Definition congruence (a b c : Z) := (a | (b - c)).
+Lemma prob8 : forall a : Z, equivalence (congruence a).
+Proof.
+  intros a.
+  split.
+  - (* Reflexivity *)
+    unfold congruence.
+    intros x.
+    rewrite Z.sub_diag.
+    apply Z.divide_0_r.
+  - split.
+   Focus 2.
+    + (* Transitivity *)
+      intros x y z H1 H2.
+      unfold congruence in *.
+      apply Z.divide_add_r with (p := a) in H1.
+      apply Z.divide_add_r with (p := a) in H2.
+Abort.
+
+Close Scope Z_scope.
